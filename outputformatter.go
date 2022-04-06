@@ -1,9 +1,10 @@
 package goose
 
 import (
-	"github.com/advancedlogic/goquery"
-	"golang.org/x/net/html"
-	"regexp"
+	"code.google.com/p/go.net/html"
+	"code.google.com/p/go.net/html/atom"
+	"fmt"
+	"github.com/PuerkitoBio/goquery"
 	"strconv"
 	"strings"
 )
@@ -65,7 +66,12 @@ func (formatter *outputFormatter) linksToText() []string {
 		imgs := a.Find("img")
 		if imgs.Length() == 0 {
 			node := a.Get(0)
-			node.Data = a.Text()
+			url, exists := a.Attr("href")
+			if exists {
+				node.Data = fmt.Sprintf("%s (%s)", a.Text(), url)
+			} else {
+				node.Data = a.Text()
+			}
 			node.Type = html.TextNode
 			// save a list of URLs
 			url, _ := a.Attr("href")
