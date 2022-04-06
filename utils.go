@@ -5,9 +5,9 @@ import (
 	"io/ioutil"
 	"regexp"
 	"strings"
-	"time"
 )
 
+// ReadLinesOfFile returns the lines from a file as a slice of strings
 func ReadLinesOfFile(filename string) []string {
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -17,16 +17,7 @@ func ReadLinesOfFile(filename string) []string {
 	return lines
 }
 
-func TimeInMilliseconds() int64 {
-	now := time.Now()
-	return now.Unix()
-}
-
-func TimeInNanoseconds() int64 {
-	now := time.Now()
-	return now.UnixNano()
-}
-
+// RegSplit splits the strings into strings using the regular expression as separator
 func RegSplit(text string, reg *regexp.Regexp) []string {
 	indexes := reg.FindAllStringIndex(text, -1)
 	laststart := 0
@@ -35,6 +26,6 @@ func RegSplit(text string, reg *regexp.Regexp) []string {
 		result[i] = text[laststart:element[0]]
 		laststart = element[1]
 	}
-	result[len(indexes)] = text[laststart:len(text)]
+	result[len(indexes)] = text[laststart:]
 	return result
 }

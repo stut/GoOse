@@ -1,7 +1,8 @@
 package goose
 
 import (
-	"github.com/PuerkitoBio/goquery"
+	"github.com/advancedlogic/goquery"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -30,8 +31,27 @@ var rules = map[*regexp.Regexp]int{
 	regexp.MustCompile("1x1"):                  -1,
 	regexp.MustCompile("pixel"):                -1,
 	regexp.MustCompile("thumbnail[s]*"):        -1,
-	regexp.MustCompile(".html|.gif|.ico|button|twitter.jpg|facebook.jpg|ap_buy_photo|digg.jpg|digg.png|delicious.png|facebook.png|reddit.jpg|doubleclick|diggthis|diggThis|adserver|/ads/|ec.atdmt.com|mediaplex.com|adsatt|view.atdmt"): -1,
-}
+	regexp.MustCompile(".html|" +
+		".gif|" +
+		".ico|" +
+		"button|" +
+		"twitter.jpg|" +
+		"facebook.jpg|" +
+		"ap_buy_photo|" +
+		"digg.jpg|" +
+		"digg.png|" +
+		"delicious.png|" +
+		"facebook.png|" +
+		"reddit.jpg|" +
+		"doubleclick|" +
+		"diggthis|" +
+		"diggThis|" +
+		"adserver|" +
+		"/ads/|" +
+		"ec.atdmt.com|" +
+		"mediaplex.com|" +
+		"adsatt|" +
+		"view.atdmt"): -1}
 
 func score(tag *goquery.Selection) int {
 	src, _ := tag.Attr("src")
@@ -57,14 +77,22 @@ func score(tag *goquery.Selection) int {
 			tagScore--
 		}
 	}
+
+	id, exists := tag.Attr("id")
+	if exists {
+		if id == "fbPhotoImage" {
+			tagScore++
+		}
+	}
 	return tagScore
 }
 
+// WebPageResolver fetches the main image from the HTML page
 func WebPageResolver(article *Article) string {
 	doc := article.Doc
 	imgs := doc.Find("img")
 	topImage := ""
-	candidates := make([]candidate, 0)
+	var candidates []candidate
 	significantSurface := 320 * 200
 	significantSurfaceCount := 0
 	src := ""
@@ -126,9 +154,16 @@ func WebPageResolver(article *Article) string {
 		topImage = bestCandidate.url
 	}
 
-	if topImage != "" && !strings.HasPrefix(topImage, "http") {
-		topImage = "http://" + topImage
+	a, err := url.Parse(topImage)
+	if err != nil {
+		return topImage
 	}
+	finalURL, err := url.Parse(article.FinalURL)
+	if err != nil {
+		return topImage
+	}
+	b := finalURL.ResolveReference(a)
+	topImage = b.String()
 
 	return topImage
 }
@@ -169,25 +204,25 @@ type ogTag struct {
 }
 
 var ogTags = [4]ogTag{
-	ogTag{
+	{
 		tpe:       "facebook",
 		attribute: "property",
 		name:      "og:image",
 		value:     "content",
 	},
-	ogTag{
+	{
 		tpe:       "facebook",
 		attribute: "rel",
 		name:      "image_src",
 		value:     "href",
 	},
-	ogTag{
+	{
 		tpe:       "twitter",
 		attribute: "name",
 		name:      "twitter:image",
 		value:     "value",
 	},
-	ogTag{
+	{
 		tpe:       "twitter",
 		attribute: "name",
 		name:      "twitter:image",
@@ -201,13 +236,14 @@ type ogImage struct {
 	score int
 }
 
+// OpenGraphResolver return OpenGraph properties
 func OpenGraphResolver(article *Article) string {
 	doc := article.Doc
 	meta := doc.Find("meta")
 	links := doc.Find("link")
 	topImage := ""
 	meta = meta.Union(links)
-	ogImages := make([]ogImage, 0)
+	var ogImages []ogImage
 	meta.Each(func(i int, tag *goquery.Selection) {
 		for _, ogTag := range ogTags {
 			attr, exist := tag.Attr(ogTag.attribute)
@@ -223,35 +259,38 @@ func OpenGraphResolver(article *Article) string {
 			}
 		}
 	})
-
+	if len(ogImages) == 0 {
+		return ""
+	}
 	if len(ogImages) == 1 {
 		topImage = ogImages[0].url
-	} else {
-		for _, ogImage := range ogImages {
-			if largebig.MatchString(ogImage.url) {
-				ogImage.score++
-			}
-			if ogImage.tpe == "twitter" {
-				ogImage.score++
-			}
-		}
-		topImage = findBestImageFromScore(ogImages).url
+		goto IMAGE_FINALIZE
 	}
-
-	if topImage != "" && !strings.HasPrefix(topImage, "http") {
+	for _, ogImage := range ogImages {
+		if largebig.MatchString(ogImage.url) {
+			ogImage.score++
+		}
+		if ogImage.tpe == "twitter" {
+			ogImage.score++
+		}
+	}
+	topImage = findBestImageFromScore(ogImages).url
+IMAGE_FINALIZE:
+	if !strings.HasPrefix(topImage, "http") {
 		topImage = "http://" + topImage
 	}
 
 	return topImage
 }
 
+// assume that len(ogImages)>=2
 func findBestImageFromScore(ogImages []ogImage) ogImage {
 	max := 0
 	var bestOGImage ogImage
-	for _, ogImage := range ogImages {
+	bestOGImage = ogImages[0]
+	for _, ogImage := range ogImages[1:] {
 		score := ogImage.score
-		//println("OG", ogImage.url, score)
-		if score >= max {
+		if score > max {
 			max = score
 			bestOGImage = ogImage
 		}
